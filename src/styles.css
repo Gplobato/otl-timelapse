@@ -142,3 +142,68 @@
     color: var(--color-foreground);
   }
 }
+
+@keyframes otl-pacman-mouth {
+  0%,
+  100% {
+    clip-path: polygon(0 0, 100% 0, 100% 38%, 56% 50%, 100% 62%, 100% 100%, 0 100%);
+  }
+
+  50% {
+    clip-path: polygon(0 0, 100% 0, 100% 50%, 56% 50%, 100% 50%, 100% 100%, 0 100%);
+  }
+}
+
+@keyframes otl-pacman-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 12px rgb(249 115 22 / 35%);
+  }
+
+  50% {
+    box-shadow: 0 0 20px rgb(249 115 22 / 60%);
+  }
+}
+
+.otl-pacman {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #fbbf24, #f97316);
+  animation:
+    otl-pacman-mouth 0.45s infinite ease-in-out,
+    otl-pacman-glow 1.2s infinite ease-in-out;
+}
+
+.otl-ghost {
+  position: absolute;
+  z-index: 5;
+  width: 1.05rem;
+  height: 1.15rem;
+  border-radius: 9999px 9999px 0.35rem 0.35rem;
+  transform: translate(-50%, -50%);
+  opacity: 0.8;
+  filter: drop-shadow(0 0 12px rgb(255 255 255 / 12%));
+  transition:
+    left 650ms ease-out,
+    top 650ms ease-out;
+}
+
+.otl-ghost::before,
+.otl-ghost::after {
+  content: "";
+  position: absolute;
+  top: 0.32rem;
+  width: 0.24rem;
+  height: 0.24rem;
+  border-radius: 9999px;
+  background: #111827;
+}
+
+.otl-ghost::before {
+  left: 0.28rem;
+}
+
+.otl-ghost::after {
+  right: 0.28rem;
+}

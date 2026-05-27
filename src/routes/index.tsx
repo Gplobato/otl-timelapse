@@ -26,6 +26,7 @@ import {
   ListVideo,
   Wand2,
   Images,
+  FolderOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,6 +62,13 @@ export const Route = createFileRoute("/")({
 type Phase = "idle" | "analyzing" | "motion" | "encoding" | "zipping" | "done" | "error";
 type EncodePhase = "loading" | "writing" | "encoding" | "concatenating";
 type ActiveTool = "cleaner" | "stabilizer";
+
+type ImportState = {
+  active: boolean;
+  current: number;
+  total: number;
+  message: string;
+};
 
 type QueueItem = {
   id: string;
@@ -122,6 +130,35 @@ function fmtTime(s: number) {
 }
 function uid() {
   return Math.random().toString(36).slice(2);
+}
+
+function waitForPaint() {
+  return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function getMazePosition(percent: number) {
+  const path = [
+    { x: 8, y: 70 },
+    { x: 24, y: 70 },
+    { x: 24, y: 28 },
+    { x: 45, y: 28 },
+    { x: 45, y: 54 },
+    { x: 66, y: 54 },
+    { x: 66, y: 18 },
+    { x: 88, y: 18 },
+    { x: 88, y: 70 },
+  ];
+  const clamped = Math.max(0, Math.min(100, percent));
+  const exact = (clamped / 100) * (path.length - 1);
+  const index = Math.min(path.length - 2, Math.floor(exact));
+  const t = exact - index;
+  const a = path[index];
+  const b = path[index + 1];
+
+  return {
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t,
+  };
 }
 
 function makeQueueItem(camera: string, project: string, files: File[]): QueueItem {
@@ -270,16 +307,78 @@ function ProgressBar({
   sublabel: string;
   value: number;
 }) {
+  const percent = Math.max(0, Math.min(100, value));
+  const pacman = getMazePosition(percent);
+  const ghostOne = getMazePosition(Math.max(0, percent - 18));
+  const ghostTwo = getMazePosition(Math.max(0, percent - 34));
+  const dots = [8, 18, 28, 38, 48, 58, 68, 78, 88].map((p) => ({
+    progress: p,
+    ...getMazePosition(p),
+  }));
+
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       <div className="flex justify-between text-sm">
         <span className="font-medium text-white">{label}</span>
-        <span className="text-zinc-400 tabular-nums">{sublabel}</span>
+        <span className="text-zinc-400 tabular-nums">
+          {Math.round(percent)}% · {sublabel}
+        </span>
+      </div>
+      <div className="relative h-24 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/90">
+        <svg
+          className="absolute inset-0 h-full w-full"
+          viewBox="0 0 100 100"
+          aria-hidden="true"
+          preserveAspectRatio="none"
+        >
+          <path
+            d="M8 70 H24 V28 H45 V54 H66 V18 H88 V70"
+            fill="none"
+            stroke="rgb(249 115 22 / 0.22)"
+            strokeDasharray="2 4"
+            strokeLinecap="round"
+            strokeWidth="2"
+          />
+          <path
+            d="M14 84 H42 M55 84 H84 M12 12 H36 M50 12 H80"
+            fill="none"
+            stroke="rgb(63 63 70 / 0.55)"
+            strokeLinecap="round"
+            strokeWidth="4"
+          />
+          {dots.map((dot) => (
+            <circle
+              key={dot.progress}
+              cx={dot.x}
+              cy={dot.y}
+              r="1.8"
+              fill="rgb(253 186 116 / 0.85)"
+              opacity={percent >= dot.progress ? 0.16 : 1}
+            />
+          ))}
+        </svg>
+        <div
+          className="otl-ghost bg-cyan-400"
+          style={{ left: `${ghostTwo.x}%`, top: `${ghostTwo.y}%` }}
+        />
+        <div
+          className="otl-ghost bg-fuchsia-400"
+          style={{ left: `${ghostOne.x}%`, top: `${ghostOne.y}%` }}
+        />
+        <div
+          className="absolute z-10 -translate-x-1/2 -translate-y-1/2 transition-all duration-500 ease-out"
+          style={{ left: `${pacman.x}%`, top: `${pacman.y}%` }}
+        >
+          <div className="otl-pacman" />
+        </div>
+        <div className="absolute bottom-2 right-3 rounded-full border border-orange-500/20 bg-zinc-950/80 px-2 py-0.5 font-mono text-xs text-orange-200">
+          {Math.round(percent)}%
+        </div>
       </div>
       <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
         <div
           className="h-full rounded-full bg-orange-500 transition-all duration-300"
-          style={{ width: `${Math.min(100, value)}%` }}
+          style={{ width: `${percent}%` }}
         />
       </div>
     </div>
@@ -866,34 +965,69 @@ function Index() {
   const [fps, setFps] = useState<number>(24);
   const [filters, setFilters] = useState<FilterOptions>({ ...DEFAULT_FILTERS });
   const [showFilters, setShowFilters] = useState(false);
+  const [importState, setImportState] = useState<ImportState>({
+    active: false,
+    current: 0,
+    total: 1,
+    message: "",
+  });
 
   // ── Queue ──
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const activeTimers = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+  const folderInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── Drop zone ──
-  const onDrop = useCallback((accepted: File[]) => {
+  const handleAcceptedFiles = useCallback(async (accepted: File[]) => {
     const imgs = accepted.filter((f) => /\.(jpe?g|png)$/i.test(f.name));
     if (imgs.length === 0) return;
 
-    const groups = groupFilesByCamera(imgs);
+    setImportState({
+      active: true,
+      current: 0,
+      total: imgs.length,
+      message: `Preparando ${imgs.length.toLocaleString("pt-BR")} fotos...`,
+    });
+    await waitForPaint();
 
-    setQueue((prev) => {
-      const next = [...prev];
-      for (const [key, files] of groups) {
-        const [camera, project] = key === "__misc__" ? ["", ""] : key.split("|||");
-        next.push(makeQueueItem(camera, project, files));
-      }
-      return next;
+    const groups = groupFilesByCamera(imgs);
+    const entries = [...groups.entries()];
+
+    const queueItems = entries.map(([key, files], idx) => {
+      const [camera, project] = key === "__misc__" ? ["", ""] : key.split("|||");
+      setImportState({
+        active: true,
+        current: idx + 1,
+        total: entries.length,
+        message: `Organizando lote ${idx + 1} de ${entries.length}...`,
+      });
+      return makeQueueItem(camera, project, files);
+    });
+
+    setQueue((prev) => [...prev, ...queueItems]);
+    await waitForPaint();
+
+    setImportState({
+      active: false,
+      current: entries.length,
+      total: entries.length || 1,
+      message: "",
     });
   }, []);
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
+  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
+    onDrop: handleAcceptedFiles,
     accept: { "image/jpeg": [".jpg", ".jpeg"], "image/png": [".png"] },
     multiple: true,
+    noClick: true,
   });
+
+  const handleFolderInput = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    await handleAcceptedFiles(selected);
+  };
 
   // ── Queue helpers ──
   const pendingItems = queue.filter((i) => i.status === "pending");
@@ -1086,6 +1220,20 @@ function Index() {
               }`}
             >
               <input {...getInputProps()} />
+              <input
+                ref={folderInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleFolderInput}
+                {...({
+                  webkitdirectory: "",
+                  directory: "",
+                } as React.InputHTMLAttributes<HTMLInputElement> & {
+                  webkitdirectory: string;
+                  directory: string;
+                })}
+              />
               <div className="flex flex-col items-center gap-3">
                 <div
                   className={`flex h-14 w-14 items-center justify-center rounded-2xl transition-colors ${isDragActive ? "bg-orange-500/20" : "bg-zinc-800"}`}
@@ -1103,11 +1251,45 @@ function Index() {
                         : "Arraste as fotos ou clique para selecionar"}
                   </p>
                   <p className="mt-1 text-sm text-zinc-500">
-                    JPG ou PNG · múltiplas câmeras são detectadas automaticamente
+                    JPG ou PNG · arraste uma pasta ou selecione pelos botões abaixo
                   </p>
+                </div>
+                <div className="flex flex-wrap justify-center gap-2 pt-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      open();
+                    }}
+                    className="border border-zinc-700 bg-zinc-800/70 text-zinc-200 hover:bg-zinc-800"
+                  >
+                    <Upload className="mr-2 h-4 w-4" /> Selecionar fotos
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      folderInputRef.current?.click();
+                    }}
+                    className="border border-orange-500/30 bg-orange-500/10 text-orange-100 hover:bg-orange-500/20"
+                  >
+                    <FolderOpen className="mr-2 h-4 w-4" /> Selecionar pasta inteira
+                  </Button>
                 </div>
               </div>
             </div>
+
+            {importState.active && (
+              <div className="rounded-2xl border border-orange-500/30 bg-orange-500/5 p-4">
+                <ProgressBar
+                  label="Carregando seleção"
+                  sublabel={importState.message}
+                  value={(importState.current / Math.max(1, importState.total)) * 100}
+                />
+              </div>
+            )}
 
             {/* ── Config + filters (only when there's something to process) ── */}
             {hasPending && (
