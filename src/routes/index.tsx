@@ -1,8 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
 import { useDropzone } from "react-dropzone";
-import { fromEvent } from "file-selector";
 import {
   Film,
   Upload,
@@ -137,6 +135,89 @@ function uid() {
 
 function waitForPaint() {
   return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+async function walkFileEntries(entries: FileSystemEntry[]): Promise<File[]> {
+  const out: File[] = [];
+  for (const entry of entries) {
+    if (entry.isFile) {
+      try {
+        const file = await new Promise<File>((resolve, reject) =>
+          (entry as FileSystemFileEntry).file(resolve, reject),
+        );
+        out.push(file);
+      } catch {
+        // ignore entries we can't read
+      }
+    } else if (entry.isDirectory) {
+      const reader = (entry as FileSystemDirectoryEntry).createReader();
+      const sub: FileSystemEntry[] = [];
+      // readEntries returns in batches; loop until empty
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        try {
+          const batch = await new Promise<FileSystemEntry[]>((resolve, reject) =>
+            reader.readEntries(resolve, reject),
+          );
+          if (batch.length === 0) break;
+          sub.push(...batch);
+        } catch {
+          break;
+        }
+      }
+      const subFiles = await walkFileEntries(sub);
+      out.push(...subFiles);
+    }
+  }
+  return out;
+}
+
+async function readDropFiles(event: unknown): Promise<File[]> {
+  // CRITICAL: snapshot entries SYNCHRONOUSLY before any await,
+  // otherwise DataTransferItemList gets detached by the browser.
+  const entries: FileSystemEntry[] = [];
+  const plainFiles: File[] = [];
+
+  const raw =
+    event && typeof event === "object" && "nativeEvent" in event
+      ? (event as { nativeEvent: unknown }).nativeEvent
+      : event;
+
+  if (raw && typeof raw === "object" && "dataTransfer" in raw) {
+    const dt = (raw as DragEvent).dataTransfer;
+    if (dt) {
+      if (dt.items && dt.items.length > 0) {
+        for (let i = 0; i < dt.items.length; i++) {
+          const item = dt.items[i];
+          if (item.kind !== "file") continue;
+          const entry =
+            typeof item.webkitGetAsEntry === "function" ? item.webkitGetAsEntry() : null;
+          if (entry) {
+            entries.push(entry);
+          } else {
+            const f = item.getAsFile();
+            if (f) plainFiles.push(f);
+          }
+        }
+      } else if (dt.files && dt.files.length > 0) {
+        for (let i = 0; i < dt.files.length; i++) plainFiles.push(dt.files[i]);
+      }
+    }
+  } else if (raw && typeof raw === "object" && "target" in raw) {
+    const target = (raw as { target: HTMLInputElement | null }).target;
+    if (target?.files) {
+      for (let i = 0; i < target.files.length; i++) plainFiles.push(target.files[i]);
+    }
+  }
+
+  // Now safe to yield — entries above survive the event lifecycle.
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+  if (entries.length === 0) return plainFiles;
+
+  const fromTree = await walkFileEntries(entries);
+  return [...plainFiles, ...fromTree];
 }
 
 const FUN_LOADING_MESSAGES = [
@@ -1032,18 +1113,12 @@ function Index() {
     });
   }, []);
 
-  const getFilesWithPaint = useCallback(async (event: Parameters<typeof fromEvent>[0]) => {
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    return fromEvent(event);
-  }, []);
-
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop: handleAcceptedFiles,
     accept: { "image/jpeg": [".jpg", ".jpeg"], "image/png": [".png"] },
     multiple: true,
     noClick: true,
-    getFilesFromEvent: getFilesWithPaint,
+    getFilesFromEvent: readDropFiles,
   });
 
   const dropzoneProps = getRootProps();
