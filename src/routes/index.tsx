@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { useDropzone } from "react-dropzone";
+import { fromEvent } from "file-selector";
 import {
   Film,
   Upload,
@@ -137,90 +139,47 @@ function waitForPaint() {
   return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 }
 
-const MAZE_PATH = [
-  { x: 8, y: 72 },
-  { x: 24, y: 72 },
-  { x: 24, y: 30 },
-  { x: 46, y: 30 },
-  { x: 46, y: 56 },
-  { x: 66, y: 56 },
-  { x: 66, y: 22 },
-  { x: 86, y: 22 },
-  { x: 86, y: 72 },
+const FUN_LOADING_MESSAGES = [
+  "Assentando o concreto...",
+  "Empilhando os pixels...",
+  "Cortando o céu cinza...",
+  "Esperando o pedreiro tomar café...",
+  "Adiantando o nascer do sol...",
+  "Lubrificando a esteira do trator...",
+  "Pintando as listras da estrada...",
+  "Apertando os parafusos do quadro...",
+  "Convocando o mestre de obra...",
+  "Acendendo a luz do canteiro...",
 ];
 
-function getMazePosition(percent: number) {
-  const clamped = Math.max(0, Math.min(100, percent));
-  const exact = (clamped / 100) * (MAZE_PATH.length - 1);
-  const index = Math.min(MAZE_PATH.length - 2, Math.floor(exact));
-  const t = exact - index;
-  const a = MAZE_PATH[index];
-  const b = MAZE_PATH[index + 1];
-
-  return {
-    x: a.x + (b.x - a.x) * t,
-    y: a.y + (b.y - a.y) * t,
-  };
-}
-
-function PacmanSvg({ gradientId }: { gradientId: string }) {
-  return (
-    <svg viewBox="-12 -12 24 24" className="otl-pacman-svg" aria-hidden="true">
-      <defs>
-        <radialGradient id={gradientId} cx="35%" cy="30%" r="80%">
-          <stop offset="0%" stopColor="#fef3c7" />
-          <stop offset="45%" stopColor="#fbbf24" />
-          <stop offset="100%" stopColor="#ea580c" />
-        </radialGradient>
-      </defs>
-      <path
-        d="M 0 0 L 10 0 A 10 10 0 0 0 9.51 -3.09 Z"
-        className="otl-pacman-half otl-pacman-top"
-        fill={`url(#${gradientId})`}
-      />
-      <path
-        d="M 0 0 L 10 0 A 10 10 0 0 1 9.51 3.09 Z"
-        className="otl-pacman-half otl-pacman-bottom"
-        fill={`url(#${gradientId})`}
-      />
-      <path d="M 9.51 -3.09 A 10 10 0 1 0 9.51 3.09 L 0 0 Z" fill={`url(#${gradientId})`} />
-      <circle cx="-1.5" cy="-5" r="1.6" fill="#0f172a" />
-      <circle cx="-2" cy="-5.5" r="0.6" fill="#fef9c3" opacity="0.9" />
-    </svg>
-  );
+function useRotatingMessage(active: boolean) {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => {
+      setIdx((i) => (i + 1) % FUN_LOADING_MESSAGES.length);
+    }, 2500);
+    return () => clearInterval(t);
+  }, [active]);
+  return FUN_LOADING_MESSAGES[idx];
 }
 
 function IndeterminateLoader({ label, message }: { label: string; message: string }) {
-  const gradientId = useId().replace(/:/g, "");
+  const funMessage = useRotatingMessage(true);
   return (
-    <div className="flex items-center gap-4">
-      <div className="relative flex h-14 w-14 items-center justify-center">
-        <div className="absolute inset-0 rounded-full border-2 border-orange-500/20" />
-        <div className="otl-spinner absolute inset-0 rounded-full border-2 border-transparent border-t-orange-400 border-r-orange-400" />
-        <div className="h-8 w-8">
-          <PacmanSvg gradientId={`otl-load-${gradientId}`} />
-        </div>
-      </div>
+    <div className="flex items-center gap-3">
+      <span className="otl-emoji-bounce shrink-0 text-3xl leading-none" aria-hidden="true">
+        🚜
+      </span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-white">{label}</p>
         <p className="mt-0.5 truncate text-xs text-zinc-400">{message}</p>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
-          <div className="otl-indeterminate-bar h-full w-1/3 rounded-full bg-gradient-to-r from-orange-500 to-amber-400" />
+        <p className="mt-0.5 truncate text-[11px] italic text-amber-300/80">{funMessage}</p>
+        <div className="relative mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+          <div className="otl-shimmer-fill rounded-full" />
         </div>
       </div>
     </div>
-  );
-}
-
-function GhostSvg({ color }: { color: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className="otl-ghost-inner" aria-hidden="true">
-      <path d="M3 12a9 9 0 1 1 18 0v9l-2.5-2-2.5 2-2.5-2-2.5 2-2.5-2L6 22l-3-1z" fill={color} />
-      <circle cx="9" cy="11" r="2.4" fill="#ffffff" />
-      <circle cx="15" cy="11" r="2.4" fill="#ffffff" />
-      <circle cx="9.4" cy="11.4" r="1" fill="#0f172a" />
-      <circle cx="15.4" cy="11.4" r="1" fill="#0f172a" />
-    </svg>
   );
 }
 
@@ -371,15 +330,7 @@ function ProgressBar({
   value: number;
 }) {
   const percent = Math.max(0, Math.min(100, value));
-  const pacman = getMazePosition(percent);
-  const ghostOne = getMazePosition(Math.max(0, percent - 16));
-  const ghostTwo = getMazePosition(Math.max(0, percent - 30));
-  const ghostThree = getMazePosition(Math.max(0, percent - 44));
-  const gradientId = useId().replace(/:/g, "");
-  const dots = [10, 20, 30, 40, 50, 60, 70, 80, 90].map((p) => ({
-    progress: p,
-    ...getMazePosition(p),
-  }));
+  const finished = percent >= 99.5;
 
   return (
     <div className="space-y-2">
@@ -389,64 +340,38 @@ function ProgressBar({
           {Math.round(percent)}% · {sublabel}
         </span>
       </div>
-      <div
-        className="relative w-full overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/90"
-        style={{ aspectRatio: "5 / 1.1", minHeight: "6rem" }}
-      >
-        <svg
-          className="absolute inset-0 h-full w-full"
-          viewBox="0 0 100 95"
+      <div className="relative h-14 overflow-hidden rounded-xl border border-zinc-800 bg-gradient-to-b from-zinc-900 to-zinc-950">
+        <div className="otl-road-stripes" aria-hidden="true" />
+        <span
+          className="pointer-events-none absolute left-1.5 bottom-0.5 select-none text-base"
           aria-hidden="true"
-          preserveAspectRatio="xMidYMid meet"
         >
-          <path
-            d="M8 72 H24 V30 H46 V56 H66 V22 H86 V72"
-            fill="none"
-            stroke="rgb(249 115 22 / 0.32)"
-            strokeDasharray="1.5 3"
-            strokeLinecap="round"
-            strokeWidth="1.6"
-          />
-          <path
-            d="M12 86 H40 M52 86 H82 M14 10 H38 M52 10 H82"
-            fill="none"
-            stroke="rgb(63 63 70 / 0.55)"
-            strokeLinecap="round"
-            strokeWidth="3"
-          />
-          {dots.map((dot) => (
-            <circle
-              key={dot.progress}
-              cx={dot.x}
-              cy={dot.y}
-              r="1.4"
-              fill="rgb(253 224 71 / 0.85)"
-              opacity={percent >= dot.progress ? 0.18 : 1}
-            />
-          ))}
-        </svg>
-        <div className="otl-ghost" style={{ left: `${ghostThree.x}%`, top: `${ghostThree.y}%` }}>
-          <GhostSvg color="#22d3ee" />
-        </div>
-        <div className="otl-ghost" style={{ left: `${ghostTwo.x}%`, top: `${ghostTwo.y}%` }}>
-          <GhostSvg color="#f472b6" />
-        </div>
-        <div className="otl-ghost" style={{ left: `${ghostOne.x}%`, top: `${ghostOne.y}%` }}>
-          <GhostSvg color="#a855f7" />
-        </div>
-        <div
-          className="absolute z-10 h-7 w-7 -translate-x-1/2 -translate-y-1/2 transition-all duration-500 ease-out"
-          style={{ left: `${pacman.x}%`, top: `${pacman.y}%` }}
+          🚧
+        </span>
+        <span
+          className="pointer-events-none absolute right-8 bottom-0.5 select-none text-base"
+          aria-hidden="true"
         >
-          <PacmanSvg gradientId={`otl-pac-${gradientId}`} />
+          🚧
+        </span>
+        <span
+          className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 select-none text-2xl"
+          aria-hidden="true"
+        >
+          {finished ? "🏢" : "🏗️"}
+        </span>
+        <div className="pointer-events-none absolute inset-x-7 top-0 bottom-0">
+          <span className="otl-tractor select-none" style={{ left: `${percent}%` }}>
+            🚜
+          </span>
         </div>
-        <div className="absolute bottom-2 right-3 rounded-full border border-orange-500/30 bg-zinc-950/80 px-2 py-0.5 font-mono text-xs text-orange-200">
+        <div className="absolute top-1 right-1.5 rounded-full border border-orange-500/40 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] tabular-nums text-orange-200">
           {Math.round(percent)}%
         </div>
       </div>
-      <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+      <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
         <div
-          className="h-full rounded-full bg-orange-500 transition-all duration-300"
+          className="h-full rounded-full bg-gradient-to-r from-orange-500 to-amber-400 transition-all duration-300"
           style={{ width: `${percent}%` }}
         />
       </div>
@@ -1107,11 +1032,18 @@ function Index() {
     });
   }, []);
 
+  const getFilesWithPaint = useCallback(async (event: Parameters<typeof fromEvent>[0]) => {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    return fromEvent(event);
+  }, []);
+
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop: handleAcceptedFiles,
     accept: { "image/jpeg": [".jpg", ".jpeg"], "image/png": [".png"] },
     multiple: true,
     noClick: true,
+    getFilesFromEvent: getFilesWithPaint,
   });
 
   const dropzoneProps = getRootProps();
@@ -1134,6 +1066,7 @@ function Index() {
     const fileList = target.files;
     if (!fileList || fileList.length === 0) return;
     beginImport("Lendo arquivos selecionados...");
+    await waitForPaint();
     await waitForPaint();
     const selected = Array.from(fileList);
     target.value = "";
