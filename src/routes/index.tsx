@@ -1181,27 +1181,45 @@ function Index() {
                 Icon: Film,
                 title: "Criar Timelapse",
                 sub: "Limpar frames e exportar MP4/ZIP",
+                disabled: false,
               },
               {
                 id: "stabilizer" as ActiveTool,
                 Icon: Wand2,
                 title: "Estabilizador",
-                sub: "Corrigir tremor de câmera fixa",
+                sub: "Em breve",
+                disabled: true,
               },
             ] as const
-          ).map(({ id, Icon, title, sub }) => (
+          ).map(({ id, Icon, title, sub, disabled }) => (
             <button
               key={id}
-              onClick={() => setActiveTool(id)}
+              disabled={disabled}
+              onClick={() => {
+                if (!disabled) setActiveTool(id);
+              }}
               className={`flex items-center gap-3 rounded-xl border p-4 text-left transition-all ${
-                activeTool === id
-                  ? "border-orange-500 bg-orange-500/10 text-white"
-                  : "border-transparent bg-zinc-800/30 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                disabled
+                  ? "cursor-not-allowed border-zinc-800 bg-zinc-950/70 text-zinc-600 opacity-70"
+                  : activeTool === id
+                    ? "border-orange-500 bg-orange-500/10 text-white"
+                    : "border-transparent bg-zinc-800/30 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
               }`}
             >
-              <Icon className={`h-5 w-5 shrink-0 ${activeTool === id ? "text-orange-400" : ""}`} />
-              <div>
-                <p className="text-sm font-semibold">{title}</p>
+              <Icon
+                className={`h-5 w-5 shrink-0 ${
+                  disabled ? "text-zinc-700" : activeTool === id ? "text-orange-400" : ""
+                }`}
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold">{title}</p>
+                  {disabled && (
+                    <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+                      Em breve
+                    </span>
+                  )}
+                </div>
                 <p className="mt-0.5 text-xs opacity-70">{sub}</p>
               </div>
             </button>
