@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import {
   Film,
@@ -68,6 +68,7 @@ type ImportState = {
   current: number;
   total: number;
   message: string;
+  indeterminate?: boolean;
 };
 
 type QueueItem = {
@@ -136,29 +137,91 @@ function waitForPaint() {
   return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 }
 
+const MAZE_PATH = [
+  { x: 8, y: 72 },
+  { x: 24, y: 72 },
+  { x: 24, y: 30 },
+  { x: 46, y: 30 },
+  { x: 46, y: 56 },
+  { x: 66, y: 56 },
+  { x: 66, y: 22 },
+  { x: 86, y: 22 },
+  { x: 86, y: 72 },
+];
+
 function getMazePosition(percent: number) {
-  const path = [
-    { x: 8, y: 70 },
-    { x: 24, y: 70 },
-    { x: 24, y: 28 },
-    { x: 45, y: 28 },
-    { x: 45, y: 54 },
-    { x: 66, y: 54 },
-    { x: 66, y: 18 },
-    { x: 88, y: 18 },
-    { x: 88, y: 70 },
-  ];
   const clamped = Math.max(0, Math.min(100, percent));
-  const exact = (clamped / 100) * (path.length - 1);
-  const index = Math.min(path.length - 2, Math.floor(exact));
+  const exact = (clamped / 100) * (MAZE_PATH.length - 1);
+  const index = Math.min(MAZE_PATH.length - 2, Math.floor(exact));
   const t = exact - index;
-  const a = path[index];
-  const b = path[index + 1];
+  const a = MAZE_PATH[index];
+  const b = MAZE_PATH[index + 1];
 
   return {
     x: a.x + (b.x - a.x) * t,
     y: a.y + (b.y - a.y) * t,
   };
+}
+
+function PacmanSvg({ gradientId }: { gradientId: string }) {
+  return (
+    <svg viewBox="-12 -12 24 24" className="otl-pacman-svg" aria-hidden="true">
+      <defs>
+        <radialGradient id={gradientId} cx="35%" cy="30%" r="80%">
+          <stop offset="0%" stopColor="#fef3c7" />
+          <stop offset="45%" stopColor="#fbbf24" />
+          <stop offset="100%" stopColor="#ea580c" />
+        </radialGradient>
+      </defs>
+      <path
+        d="M 0 0 L 10 0 A 10 10 0 0 0 9.51 -3.09 Z"
+        className="otl-pacman-half otl-pacman-top"
+        fill={`url(#${gradientId})`}
+      />
+      <path
+        d="M 0 0 L 10 0 A 10 10 0 0 1 9.51 3.09 Z"
+        className="otl-pacman-half otl-pacman-bottom"
+        fill={`url(#${gradientId})`}
+      />
+      <path d="M 9.51 -3.09 A 10 10 0 1 0 9.51 3.09 L 0 0 Z" fill={`url(#${gradientId})`} />
+      <circle cx="-1.5" cy="-5" r="1.6" fill="#0f172a" />
+      <circle cx="-2" cy="-5.5" r="0.6" fill="#fef9c3" opacity="0.9" />
+    </svg>
+  );
+}
+
+function IndeterminateLoader({ label, message }: { label: string; message: string }) {
+  const gradientId = useId().replace(/:/g, "");
+  return (
+    <div className="flex items-center gap-4">
+      <div className="relative flex h-14 w-14 items-center justify-center">
+        <div className="absolute inset-0 rounded-full border-2 border-orange-500/20" />
+        <div className="otl-spinner absolute inset-0 rounded-full border-2 border-transparent border-t-orange-400 border-r-orange-400" />
+        <div className="h-8 w-8">
+          <PacmanSvg gradientId={`otl-load-${gradientId}`} />
+        </div>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-white">{label}</p>
+        <p className="mt-0.5 truncate text-xs text-zinc-400">{message}</p>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+          <div className="otl-indeterminate-bar h-full w-1/3 rounded-full bg-gradient-to-r from-orange-500 to-amber-400" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GhostSvg({ color }: { color: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className="otl-ghost-inner" aria-hidden="true">
+      <path d="M3 12a9 9 0 1 1 18 0v9l-2.5-2-2.5 2-2.5-2-2.5 2-2.5-2L6 22l-3-1z" fill={color} />
+      <circle cx="9" cy="11" r="2.4" fill="#ffffff" />
+      <circle cx="15" cy="11" r="2.4" fill="#ffffff" />
+      <circle cx="9.4" cy="11.4" r="1" fill="#0f172a" />
+      <circle cx="15.4" cy="11.4" r="1" fill="#0f172a" />
+    </svg>
+  );
 }
 
 function makeQueueItem(camera: string, project: string, files: File[]): QueueItem {
@@ -309,9 +372,11 @@ function ProgressBar({
 }) {
   const percent = Math.max(0, Math.min(100, value));
   const pacman = getMazePosition(percent);
-  const ghostOne = getMazePosition(Math.max(0, percent - 18));
-  const ghostTwo = getMazePosition(Math.max(0, percent - 34));
-  const dots = [8, 18, 28, 38, 48, 58, 68, 78, 88].map((p) => ({
+  const ghostOne = getMazePosition(Math.max(0, percent - 16));
+  const ghostTwo = getMazePosition(Math.max(0, percent - 30));
+  const ghostThree = getMazePosition(Math.max(0, percent - 44));
+  const gradientId = useId().replace(/:/g, "");
+  const dots = [10, 20, 30, 40, 50, 60, 70, 80, 90].map((p) => ({
     progress: p,
     ...getMazePosition(p),
   }));
@@ -324,54 +389,58 @@ function ProgressBar({
           {Math.round(percent)}% · {sublabel}
         </span>
       </div>
-      <div className="relative h-24 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/90">
+      <div
+        className="relative w-full overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/90"
+        style={{ aspectRatio: "5 / 1.1", minHeight: "6rem" }}
+      >
         <svg
           className="absolute inset-0 h-full w-full"
-          viewBox="0 0 100 100"
+          viewBox="0 0 100 95"
           aria-hidden="true"
-          preserveAspectRatio="none"
+          preserveAspectRatio="xMidYMid meet"
         >
           <path
-            d="M8 70 H24 V28 H45 V54 H66 V18 H88 V70"
+            d="M8 72 H24 V30 H46 V56 H66 V22 H86 V72"
             fill="none"
-            stroke="rgb(249 115 22 / 0.22)"
-            strokeDasharray="2 4"
+            stroke="rgb(249 115 22 / 0.32)"
+            strokeDasharray="1.5 3"
             strokeLinecap="round"
-            strokeWidth="2"
+            strokeWidth="1.6"
           />
           <path
-            d="M14 84 H42 M55 84 H84 M12 12 H36 M50 12 H80"
+            d="M12 86 H40 M52 86 H82 M14 10 H38 M52 10 H82"
             fill="none"
             stroke="rgb(63 63 70 / 0.55)"
             strokeLinecap="round"
-            strokeWidth="4"
+            strokeWidth="3"
           />
           {dots.map((dot) => (
             <circle
               key={dot.progress}
               cx={dot.x}
               cy={dot.y}
-              r="1.8"
-              fill="rgb(253 186 116 / 0.85)"
-              opacity={percent >= dot.progress ? 0.16 : 1}
+              r="1.4"
+              fill="rgb(253 224 71 / 0.85)"
+              opacity={percent >= dot.progress ? 0.18 : 1}
             />
           ))}
         </svg>
+        <div className="otl-ghost" style={{ left: `${ghostThree.x}%`, top: `${ghostThree.y}%` }}>
+          <GhostSvg color="#22d3ee" />
+        </div>
+        <div className="otl-ghost" style={{ left: `${ghostTwo.x}%`, top: `${ghostTwo.y}%` }}>
+          <GhostSvg color="#f472b6" />
+        </div>
+        <div className="otl-ghost" style={{ left: `${ghostOne.x}%`, top: `${ghostOne.y}%` }}>
+          <GhostSvg color="#a855f7" />
+        </div>
         <div
-          className="otl-ghost bg-cyan-400"
-          style={{ left: `${ghostTwo.x}%`, top: `${ghostTwo.y}%` }}
-        />
-        <div
-          className="otl-ghost bg-fuchsia-400"
-          style={{ left: `${ghostOne.x}%`, top: `${ghostOne.y}%` }}
-        />
-        <div
-          className="absolute z-10 -translate-x-1/2 -translate-y-1/2 transition-all duration-500 ease-out"
+          className="absolute z-10 h-7 w-7 -translate-x-1/2 -translate-y-1/2 transition-all duration-500 ease-out"
           style={{ left: `${pacman.x}%`, top: `${pacman.y}%` }}
         >
-          <div className="otl-pacman" />
+          <PacmanSvg gradientId={`otl-pac-${gradientId}`} />
         </div>
-        <div className="absolute bottom-2 right-3 rounded-full border border-orange-500/20 bg-zinc-950/80 px-2 py-0.5 font-mono text-xs text-orange-200">
+        <div className="absolute bottom-2 right-3 rounded-full border border-orange-500/30 bg-zinc-950/80 px-2 py-0.5 font-mono text-xs text-orange-200">
           {Math.round(percent)}%
         </div>
       </div>
@@ -979,15 +1048,35 @@ function Index() {
   const folderInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── Drop zone ──
+  const beginImport = useCallback((message: string) => {
+    setImportState({
+      active: true,
+      current: 0,
+      total: 1,
+      message,
+      indeterminate: true,
+    });
+  }, []);
+
   const handleAcceptedFiles = useCallback(async (accepted: File[]) => {
     const imgs = accepted.filter((f) => /\.(jpe?g|png)$/i.test(f.name));
-    if (imgs.length === 0) return;
+    if (imgs.length === 0) {
+      setImportState({
+        active: false,
+        current: 0,
+        total: 1,
+        message: "",
+        indeterminate: false,
+      });
+      return;
+    }
 
     setImportState({
       active: true,
       current: 0,
       total: imgs.length,
       message: `Preparando ${imgs.length.toLocaleString("pt-BR")} fotos...`,
+      indeterminate: false,
     });
     await waitForPaint();
 
@@ -1001,6 +1090,7 @@ function Index() {
         current: idx + 1,
         total: entries.length,
         message: `Organizando lote ${idx + 1} de ${entries.length}...`,
+        indeterminate: false,
       });
       return makeQueueItem(camera, project, files);
     });
@@ -1013,6 +1103,7 @@ function Index() {
       current: entries.length,
       total: entries.length || 1,
       message: "",
+      indeterminate: false,
     });
   }, []);
 
@@ -1023,9 +1114,29 @@ function Index() {
     noClick: true,
   });
 
+  const dropzoneProps = getRootProps();
+  const dropzoneRootProps = {
+    ...dropzoneProps,
+    onDropCapture: (event: React.DragEvent<HTMLDivElement>) => {
+      const items = event.dataTransfer?.items;
+      const hasFiles =
+        (items && Array.from(items).some((it) => it.kind === "file")) ||
+        (event.dataTransfer?.files?.length ?? 0) > 0;
+      if (hasFiles) {
+        beginImport("Lendo arquivos da pasta...");
+      }
+      dropzoneProps.onDropCapture?.(event);
+    },
+  };
+
   const handleFolderInput = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = Array.from(event.target.files ?? []);
-    event.target.value = "";
+    const target = event.target;
+    const fileList = target.files;
+    if (!fileList || fileList.length === 0) return;
+    beginImport("Lendo arquivos selecionados...");
+    await waitForPaint();
+    const selected = Array.from(fileList);
+    target.value = "";
     await handleAcceptedFiles(selected);
   };
 
@@ -1230,7 +1341,7 @@ function Index() {
           <>
             {/* ── Drop zone ── */}
             <div
-              {...getRootProps()}
+              {...dropzoneRootProps}
               className={`relative cursor-pointer rounded-2xl border-2 border-dashed p-12 text-center transition-all duration-200 ${
                 isDragActive
                   ? "border-orange-400 bg-orange-500/10 scale-[1.01]"
@@ -1301,11 +1412,21 @@ function Index() {
 
             {importState.active && (
               <div className="rounded-2xl border border-orange-500/30 bg-orange-500/5 p-4">
-                <ProgressBar
-                  label="Carregando seleção"
-                  sublabel={importState.message}
-                  value={(importState.current / Math.max(1, importState.total)) * 100}
-                />
+                {importState.indeterminate ? (
+                  <IndeterminateLoader
+                    label="Lendo arquivos..."
+                    message={
+                      importState.message ||
+                      "Aguarde enquanto o navegador percorre a pasta selecionada"
+                    }
+                  />
+                ) : (
+                  <ProgressBar
+                    label="Carregando seleção"
+                    sublabel={importState.message}
+                    value={(importState.current / Math.max(1, importState.total)) * 100}
+                  />
+                )}
               </div>
             )}
 

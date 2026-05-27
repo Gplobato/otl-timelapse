@@ -143,67 +143,109 @@
   }
 }
 
-@keyframes otl-pacman-mouth {
+@keyframes otl-pac-top {
   0%,
   100% {
-    clip-path: polygon(0 0, 100% 0, 100% 38%, 56% 50%, 100% 62%, 100% 100%, 0 100%);
+    transform: rotate(-2deg);
   }
 
   50% {
-    clip-path: polygon(0 0, 100% 0, 100% 50%, 56% 50%, 100% 50%, 100% 100%, 0 100%);
+    transform: rotate(-32deg);
   }
 }
 
-@keyframes otl-pacman-glow {
+@keyframes otl-pac-bottom {
   0%,
   100% {
-    box-shadow: 0 0 12px rgb(249 115 22 / 35%);
+    transform: rotate(2deg);
   }
 
   50% {
-    box-shadow: 0 0 20px rgb(249 115 22 / 60%);
+    transform: rotate(32deg);
   }
 }
 
-.otl-pacman {
-  width: 1.25rem;
-  height: 1.25rem;
-  border-radius: 9999px;
-  background: linear-gradient(135deg, #fbbf24, #f97316);
-  animation:
-    otl-pacman-mouth 0.45s infinite ease-in-out,
-    otl-pacman-glow 1.2s infinite ease-in-out;
+@keyframes otl-pac-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 4px rgb(249 115 22 / 55%));
+  }
+
+  50% {
+    filter: drop-shadow(0 0 10px rgb(251 191 36 / 75%));
+  }
+}
+
+@keyframes otl-ghost-float {
+  0%,
+  100% {
+    transform: translate(-50%, calc(-50% - 1px));
+  }
+
+  50% {
+    transform: translate(-50%, calc(-50% + 2px));
+  }
+}
+
+@keyframes otl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.otl-pacman-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: otl-pac-glow 1.6s infinite ease-in-out;
+}
+
+.otl-pacman-half {
+  transform-box: fill-box;
+  transform-origin: 0 0;
+}
+
+.otl-pacman-top {
+  animation: otl-pac-top 0.42s infinite ease-in-out;
+}
+
+.otl-pacman-bottom {
+  animation: otl-pac-bottom 0.42s infinite ease-in-out;
 }
 
 .otl-ghost {
   position: absolute;
   z-index: 5;
-  width: 1.05rem;
-  height: 1.15rem;
-  border-radius: 9999px 9999px 0.35rem 0.35rem;
+  width: 1.5rem;
+  height: 1.5rem;
   transform: translate(-50%, -50%);
-  opacity: 0.8;
-  filter: drop-shadow(0 0 12px rgb(255 255 255 / 12%));
+  pointer-events: none;
   transition:
     left 650ms ease-out,
     top 650ms ease-out;
 }
 
-.otl-ghost::before,
-.otl-ghost::after {
-  content: "";
-  position: absolute;
-  top: 0.32rem;
-  width: 0.24rem;
-  height: 0.24rem;
-  border-radius: 9999px;
-  background: #111827;
+.otl-ghost-inner {
+  width: 100%;
+  height: 100%;
+  animation: otl-ghost-float 0.6s infinite ease-in-out;
+  filter: drop-shadow(0 0 6px rgb(255 255 255 / 15%));
 }
 
-.otl-ghost::before {
-  left: 0.28rem;
+.otl-spinner {
+  animation: otl-spin 1s linear infinite;
 }
 
-.otl-ghost::after {
-  right: 0.28rem;
+@keyframes otl-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.otl-indeterminate-bar {
+  animation: otl-indeterminate 1.3s infinite ease-in-out;
 }
