@@ -220,37 +220,107 @@ async function readDropFiles(event: unknown): Promise<File[]> {
   return [...plainFiles, ...fromTree];
 }
 
-const FUN_LOADING_MESSAGES = [
-  "Assentando o concreto...",
-  "Empilhando os pixels...",
-  "Cortando o céu cinza...",
-  "Esperando o pedreiro tomar café...",
-  "Adiantando o nascer do sol...",
-  "Lubrificando a esteira do trator...",
-  "Pintando as listras da estrada...",
-  "Apertando os parafusos do quadro...",
-  "Convocando o mestre de obra...",
-  "Acendendo a luz do canteiro...",
-];
+type ProgressTheme = "default" | "import" | "analyze" | "motion" | "encode" | "stabilize";
 
-function useRotatingMessage(active: boolean) {
+const THEME_CONFIG: Record<
+  ProgressTheme,
+  { vehicle: string; endIcon: string; doneIcon: string; messages: string[] }
+> = {
+  default: {
+    vehicle: "🚜",
+    endIcon: "🏗️",
+    doneIcon: "🏢",
+    messages: [
+      "Assentando o concreto...",
+      "Pintando as listras da estrada...",
+      "Acendendo a luz do canteiro...",
+      "Lubrificando a esteira do trator...",
+    ],
+  },
+  import: {
+    vehicle: "🚚",
+    endIcon: "🏗️",
+    doneIcon: "📂",
+    messages: [
+      "Caminhão chegando com as fotos...",
+      "Descarregando frame por frame...",
+      "Conferindo nota fiscal...",
+      "Organizando o canteiro...",
+      "Catalogando o material...",
+      "Empilhando as caixas no depósito...",
+    ],
+  },
+  analyze: {
+    vehicle: "🚜",
+    endIcon: "🏗️",
+    doneIcon: "🏢",
+    messages: [
+      "Trator passando para analisar o terreno...",
+      "Anotando cada frame na prancheta...",
+      "Separando o joio do trigo...",
+      "Filtrando o que serve e o que descarta...",
+      "Olhando frame por frame, sem pressa...",
+      "Marcando os bons no caderninho...",
+      "Espantando os pixels fantasmas...",
+    ],
+  },
+  motion: {
+    vehicle: "🚲",
+    endIcon: "🎯",
+    doneIcon: "✅",
+    messages: [
+      "Pedalando atrás dos pixels que mexeram...",
+      "Comparando antes e depois...",
+      "Caçando movimento no canteiro...",
+      "Marcando os frames quietos...",
+      "Detectando o que mudou entre frames...",
+    ],
+  },
+  encode: {
+    vehicle: "🏍️",
+    endIcon: "🎬",
+    doneIcon: "🎞️",
+    messages: [
+      "Moto buzinando, codificando rápido...",
+      "Soldando os bits no MP4...",
+      "Apertando pixels no compressor...",
+      "Empilhando frames no contêiner...",
+      "Fritando a placa de vídeo (com carinho)...",
+      "Convertendo luz em zero e um...",
+      "Lacrando o keyframe final...",
+    ],
+  },
+  stabilize: {
+    vehicle: "🛻",
+    endIcon: "📐",
+    doneIcon: "✅",
+    messages: [
+      "Apertando os parafusos do tripé...",
+      "Nivelando a câmera...",
+      "Compensando o tremor do vento...",
+      "Calibrando o eixo X e Y...",
+    ],
+  },
+};
+
+function useRotatingMessage(messages: string[], active = true) {
   const [idx, setIdx] = useState(0);
   useEffect(() => {
-    if (!active) return;
+    if (!active || messages.length < 2) return;
     const t = setInterval(() => {
-      setIdx((i) => (i + 1) % FUN_LOADING_MESSAGES.length);
+      setIdx((i) => (i + 1) % messages.length);
     }, 2500);
     return () => clearInterval(t);
-  }, [active]);
-  return FUN_LOADING_MESSAGES[idx];
+  }, [messages.length, active]);
+  return messages.length > 0 ? messages[idx % messages.length] : "";
 }
 
 function IndeterminateLoader({ label, message }: { label: string; message: string }) {
-  const funMessage = useRotatingMessage(true);
+  const funMessage = useRotatingMessage(THEME_CONFIG.import.messages);
   return (
     <div className="flex items-center gap-3">
       <span className="otl-emoji-bounce shrink-0 text-3xl leading-none" aria-hidden="true">
-        🚜
+        🚚
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-white">{label}</p>
@@ -405,50 +475,45 @@ function ProgressBar({
   label,
   sublabel,
   value,
+  theme = "default",
 }: {
   label: string;
   sublabel: string;
   value: number;
+  theme?: ProgressTheme;
 }) {
   const percent = Math.max(0, Math.min(100, value));
   const finished = percent >= 99.5;
+  const cfg = THEME_CONFIG[theme];
+  const funMessage = useRotatingMessage(cfg.messages, !finished);
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <div className="flex justify-between text-sm">
         <span className="font-medium text-white">{label}</span>
         <span className="text-zinc-400 tabular-nums">
           {Math.round(percent)}% · {sublabel}
         </span>
       </div>
-      <div className="relative h-14 overflow-hidden rounded-xl border border-zinc-800 bg-gradient-to-b from-zinc-900 to-zinc-950">
-        <div className="otl-road-stripes" aria-hidden="true" />
-        <span
-          className="pointer-events-none absolute left-1.5 bottom-0.5 select-none text-base"
-          aria-hidden="true"
-        >
-          🚧
-        </span>
-        <span
-          className="pointer-events-none absolute right-8 bottom-0.5 select-none text-base"
-          aria-hidden="true"
-        >
-          🚧
-        </span>
-        <span
-          className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 select-none text-2xl"
-          aria-hidden="true"
-        >
-          {finished ? "🏢" : "🏗️"}
-        </span>
-        <div className="pointer-events-none absolute inset-x-7 top-0 bottom-0">
-          <span className="otl-tractor select-none" style={{ left: `${percent}%` }}>
-            🚜
-          </span>
+      <div className="flex items-center gap-2">
+        <div className="relative h-12 flex-1 overflow-hidden rounded-xl border border-zinc-800 bg-gradient-to-b from-zinc-900 to-zinc-950">
+          <div className="otl-road-stripes" aria-hidden="true" />
+          <div className="pointer-events-none absolute inset-x-6 top-0 bottom-0">
+            <span className="otl-tractor select-none" style={{ left: `${percent}%` }}>
+              {cfg.vehicle}
+            </span>
+          </div>
+          <div className="absolute top-1 right-1.5 rounded-full border border-orange-500/40 bg-zinc-950/85 px-2 py-0.5 font-mono text-[11px] tabular-nums text-orange-200">
+            {Math.round(percent)}%
+          </div>
         </div>
-        <div className="absolute top-1 right-1.5 rounded-full border border-orange-500/40 bg-zinc-950/80 px-2 py-0.5 font-mono text-[11px] tabular-nums text-orange-200">
-          {Math.round(percent)}%
-        </div>
+        <span
+          className="shrink-0 select-none text-2xl leading-none"
+          aria-hidden="true"
+          title={finished ? "Concluído" : "Destino"}
+        >
+          {finished ? cfg.doneIcon : cfg.endIcon}
+        </span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
         <div
@@ -456,6 +521,9 @@ function ProgressBar({
           style={{ width: `${percent}%` }}
         />
       </div>
+      {!finished && funMessage && (
+        <p className="truncate pl-1 text-[11px] italic text-amber-300/80">{funMessage}</p>
+      )}
     </div>
   );
 }
@@ -546,6 +614,7 @@ function QueueCard({
               label={item.phase === "analyzing" ? "Analisando frames" : "✓ Análise concluída"}
               sublabel={`${item.analyzed.toLocaleString("pt-BR")} / ${item.files.length.toLocaleString("pt-BR")}${item.rejectedCount > 0 ? ` · ${item.rejectedCount} descartados` : ""}`}
               value={analyzePct}
+              theme="analyze"
             />
           )}
           {item.motionTotal > 0 && (
@@ -555,6 +624,7 @@ function QueueCard({
               }
               sublabel={`${item.motionDone} / ${item.motionTotal}`}
               value={motionPct}
+              theme="motion"
             />
           )}
           {mode === "video" && (item.phase === "encoding" || item.encodeCurrent > 0) && (
@@ -562,6 +632,7 @@ function QueueCard({
               label={ENCODE_LABELS[item.encodePhase]}
               sublabel={`${item.encodeCurrent.toLocaleString("pt-BR")} / ${item.encodeTotal.toLocaleString("pt-BR")}`}
               value={encodePct}
+              theme="encode"
             />
           )}
         </div>
@@ -918,6 +989,7 @@ function StabilizerPanel() {
                 label={STABILIZER_PHASE_LABELS[phase]}
                 sublabel={`${current.toLocaleString("pt-BR")} / ${total.toLocaleString("pt-BR")}`}
                 value={progress}
+                theme="stabilize"
               />
             </div>
           )}
@@ -1433,6 +1505,7 @@ function Index() {
                     label="Carregando seleção"
                     sublabel={importState.message}
                     value={(importState.current / Math.max(1, importState.total)) * 100}
+                    theme="import"
                   />
                 )}
               </div>
